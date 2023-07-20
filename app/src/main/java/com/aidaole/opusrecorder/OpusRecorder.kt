@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.media.AudioFormat
 import android.media.AudioRecord
 import com.aidaole.ext.logi
+import java.io.File
+import java.io.FileOutputStream
 import kotlin.concurrent.thread
 
 @SuppressLint("MissingPermission")
@@ -22,6 +24,7 @@ class OpusRecorder private constructor(
         audioFormat,
         bufferSize
     )
+    private var sourceDataFos: FileOutputStream? = null
 
     companion object {
         private const val TAG = "OpusRecorder"
@@ -44,7 +47,7 @@ class OpusRecorder private constructor(
         START, STOP
     }
 
-    fun startRecord(listener: (data: ByteArray) -> Unit) {
+    fun startRecord(listener: (data: ByteArray) -> Unit, saveSourceFileName: (() -> String)? = null) {
         if (state == State.START) {
             return
         }
@@ -54,7 +57,25 @@ class OpusRecorder private constructor(
             while (state == State.START) {
                 val len = audioRecorder.read(readBuffer, 0, readBuffer.size)
                 "startRecord-> bufferSize: ${readBuffer.size}, readLen: $len".logi(TAG)
-                listener.invoke(readBuffer.copyOfRange(0, len))
+                val readData = readBuffer.copyOfRange(0, len)
+                if (saveSourceFileName != null) {
+                    saveToFile(readData, saveSourceFileName.invoke())
+                }
+                listener.invoke(readData)
+            }
+        }
+    }
+
+    private fun saveToFile(readData: ByteArray, savePath: String) {
+        "saveToFile-> $savePath, len: ${readData.size}".logi(TAG)
+        sourceDataFos?.let {
+            it.write(readData)
+            it.flush()
+        } ?: run {
+            sourceDataFos = makeSureFosValid(savePath)
+            sourceDataFos?.run {
+                write(readData)
+                flush()
             }
         }
     }
@@ -62,11 +83,32 @@ class OpusRecorder private constructor(
     fun stopRecord() {
         state = State.STOP
         audioRecorder.stop()
+        releaseStreams()
     }
 
-    fun release() {
+    fun destroy() {
         state = State.STOP
         audioRecorder.release()
+        releaseStreams()
+    }
+
+    private fun makeSureFosValid(fileName: String): FileOutputStream? {
+        val file = File(fileName)
+        return if (file.exists()) {
+            FileOutputStream(file)
+        } else {
+            val succ = file.parentFile?.mkdirs()
+            if (succ != true) {
+                null
+            } else {
+                FileOutputStream(file)
+            }
+        }
+    }
+
+    private fun releaseStreams() {
+        sourceDataFos?.close()
+        sourceDataFos = null
     }
 
     override fun toString(): String {
@@ -80,7 +122,7 @@ class OpusRecorder private constructor(
         const val RATE_11025 = 11025
     }
 
-    object READ_MS {
+    object FRAME_MS {
         const val MS_2_5 = 2.5
         const val MS_5 = 5
         const val MS_10 = 10

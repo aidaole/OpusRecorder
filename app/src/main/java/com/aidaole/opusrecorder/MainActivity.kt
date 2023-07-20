@@ -41,12 +41,14 @@ class MainActivity : AppCompatActivity() {
                 OpusRecorder.SampleRate.RATE_16000,
                 AudioFormat.CHANNEL_IN_STEREO,
                 AudioFormat.ENCODING_PCM_16BIT,
-                OpusRecorder.READ_MS.MS_20
+                OpusRecorder.FRAME_MS.MS_20
             )
             "initViews-> $recorder".logi(TAG)
-            recorder?.startRecord {
+            recorder?.startRecord({
                 "initViews-> ${it.size}".logi(TAG)
-            }
+            }, {
+                "${this@MainActivity.filesDir}/audio/source.pcm"
+            })
         }
         layout.btnStop.setOnClickListener {
             recorder?.stopRecord()
@@ -55,6 +57,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        recorder?.release()
+        recorder?.destroy()
     }
 }
